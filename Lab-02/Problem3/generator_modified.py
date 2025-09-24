@@ -1,3 +1,14 @@
+import random
+
+def getWords(filename):
+    words = []
+    with open(filename, "r") as file:
+        for line in file:
+            word = line.strip()
+            if word:  
+                words.append(word.upper())  
+    return tuple(words)
+
 
 articles = getWords("articles.txt")
 nouns = getWords("nouns.txt")
