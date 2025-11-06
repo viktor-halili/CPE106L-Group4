@@ -1,2 +1,38 @@
 Lab-04/inLab/OXOfiles/__pycache__/oxo_data.cpython-313.pyc
 Lab-04/inLab/OXOfiles/__pycache__/oxo_logic.cpython-313.pyc
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Standard Python build/distribution directories
+build/
+dist/
+*.egg-info/
+
+# Virtual environment folders
+# (Common names like 'env' and 'venv')
+env/
+venv/
+.venv/
+
+# Secret files
+# Never commit API keys or environment-specific variables
+.env
+*.env
+
+# VS Code
+# We are 'un-ignoring' the settings.json file
+# so that other developers can use your project setup.
+# We will ignore user-specific workspace files.
+.vscode/*
+!.vscode/settings.json
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/

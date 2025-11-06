@@ -1,0 +1,29 @@
+{
+  // This tells VS Code the *exact* Python to use for this workspace
+  "python.defaultInterpreterPath": "C:\\Users\\Alek\\anaconda3\\envs\\SoftwareDevelopmentLaboratory\\python.exe",
+
+  // This tells the VS Code terminal to *automatically* activate
+  // this Conda environment when you open a new terminal.
+  "python.terminal.activateEnvironment": true,
+  "python.terminal.activateEnvInCurrentTerminal": true,
+
+  // --- This is the new, important part ---
+  "terminal.integrated.profiles.windows": {
+    // We are creating a new profile called "Conda-PS"
+    "Conda-PS": {
+      // This is the command to run...
+      "path": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      // ...and these are the arguments to start it with.
+      // This command loads the Conda activation script.
+      "args": [
+        "-ExecutionPolicy",
+        "ByPass",
+        "-NoExit",
+        "-Command",
+        "& 'C:\\Users\\Alek\\anaconda3\\shell\\condabin\\conda-hook.ps1' ; conda activate 'C:\\Users\\Alek\\anaconda3\\envs\\SoftwareDevelopmentLaboratory'"
+      ]
+    }
+  },
+  // This sets our new "Conda-PS" as the default terminal
+  "terminal.integrated.defaultProfile.windows": "Conda-PS"
+}
