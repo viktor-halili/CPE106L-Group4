@@ -33,6 +33,14 @@ def main(page: ft.Page):
     match_run_status = ft.Text(value="", color=ft.Colors.BLUE)
     match_list = ft.ListView(expand=1, spacing=10)
 
+    # --- Logistics Tab Controls (NEW) ---
+    logistics_matches_list = ft.ListView(expand=1, spacing=10)
+    logistics_pending_list = ft.ListView(expand=1, spacing=10)
+    logistics_status = ft.Text(value="", color=ft.Colors.BLUE)
+    
+    # This will hold the raw JSON data of the matches
+    page.client_storage.set("current_matches", []) 
+
     # --- Event Handlers (Donors) ---
     
     def register_donor_click(e):
@@ -99,6 +107,7 @@ def main(page: ft.Page):
             page.update()
             return
         try:
+            # TODO: Add a DatePicker for expiry
             expiry = (datetime.now() + timedelta(days=5)).isoformat()
             
             food_data = {
@@ -188,12 +197,13 @@ def main(page: ft.Page):
         if e:
             page.update()
 
-    # --- Event Handlers (Matching) ---
+    # --- Event Handlers (Matching) (UPDATED) ---
     
     def run_match_click(e):
         match_run_status.value = "Running algorithm..."
         match_run_status.color = ft.Colors.BLUE
         match_list.controls.clear()
+        page.client_storage.set("current_matches", []) # Clear old matches
         page.update()
         
         try:
@@ -201,6 +211,12 @@ def main(page: ft.Page):
             
             if response.status_code == 200:
                 matches = response.json()
+                
+                # --- NEW ---
+                # Save matches for the logistics tab to use
+                page.client_storage.set("current_matches", matches) 
+                # --- END NEW ---
+
                 match_run_status.value = f"Algorithm complete! Found {len(matches)} matches."
                 match_run_status.color = ft.Colors.GREEN
                 
@@ -226,6 +242,114 @@ def main(page: ft.Page):
             match_run_status.color = ft.Colors.RED
             
         page.update()
+
+    # --- Event Handlers (Logistics) (NEW) ---
+    
+    def refresh_logistics_matches(e):
+        """
+        Loads the matches that were generated in the 'Matching' tab.
+        """
+        logistics_matches_list.controls.clear()
+        logistics_status.value = "Loading proposed matches..."
+        logistics_status.color = ft.Colors.BLUE
+        
+        matches = page.client_storage.get("current_matches")
+        
+        if not matches:
+            logistics_matches_list.controls.append(ft.Text("No matches found. Run the algorithm on the 'Matching' tab first."))
+            logistics_status.value = "No matches to show."
+            page.update()
+            return
+
+        logistics_status.value = f"Loaded {len(matches)} proposed matches."
+        
+        for match in matches:
+            title = f"{match['food_name']} ({match['quantity_matched']} {match['unit']})"
+            subtitle = f"From: {match['donor_name']}  ->  To: {match['recipient_name']}"
+            
+            # We add a checkbox and store the raw match data
+            logistics_matches_list.controls.append(
+                ft.Checkbox(
+                    label=f"{title}\n{subtitle}",
+                    data=match # Store the full match dictionary
+                )
+            )
+        page.update()
+
+    def create_pickup_click(e):
+        """
+        Gathers all selected matches and sends them
+        to the new /pickups endpoint.
+        """
+        logistics_status.value = "Creating pickup route..."
+        logistics_status.color = ft.Colors.BLUE
+        page.update()
+
+        selected_matches = []
+        for control in logistics_matches_list.controls:
+            if isinstance(control, ft.Checkbox) and control.value:
+                selected_matches.append(control.data) # Get the stored match dict
+
+        if not selected_matches:
+            logistics_status.value = "Error: Please select at least one match."
+            logistics_status.color = ft.Colors.RED
+            page.update()
+            return
+
+        try:
+            # We send the list of match objects as the JSON body
+            response = requests.post(f"{API_URL}/pickups", json=selected_matches)
+            
+            if response.status_code == 200:
+                new_pickup = response.json()
+                logistics_status.value = f"Success! Created pickup {new_pickup['_id']}"
+                logistics_status.color = ft.Colors.GREEN
+                
+                # Clear the selected matches
+                refresh_logistics_matches(None) 
+                # Refresh the pending list
+                refresh_pending_pickups(None)
+            else:
+                logistics_status.value = f"Error: {response.json().get('detail')}"
+                logistics_status.color = ft.Colors.RED
+
+        except Exception as ex:
+            logistics_status.value = f"API connection error: {ex}"
+            logistics_status.color = ft.Colors.RED
+        
+        page.update()
+
+    def refresh_pending_pickups(e):
+        """
+        Gets all pickups from the /pickups endpoint.
+        """
+        logistics_pending_list.controls.clear()
+        
+        try:
+            response = requests.get(f"{API_URL}/pickups")
+            if response.status_code != 200:
+                logistics_pending_list.append(ft.Text("Error fetching pickups."))
+                page.update()
+                return
+            
+            pickups = response.json()
+            if not pickups:
+                logistics_pending_list.append(ft.Text("No pending pickups."))
+
+            for pickup in pickups:
+                # We'll just show the status and ID for now
+                logistics_pending_list.controls.append(
+                    ft.ListTile(
+                        title=ft.Text(f"Pickup ID: {pickup['_id']}"),
+                        subtitle=ft.Text(f"Status: {pickup['status']} | Stops: {len(pickup['stops'])}"),
+                        leading=ft.Icon(ft.Icons.ROUTE)
+                    )
+                )
+        except Exception as ex:
+            logistics_pending_list.append(ft.Text(f"API Error: {ex}"))
+        
+        if e: # Only update the page if a user clicked
+            page.update()
 
     # --- Page Layout (with Tabs) ---
 
@@ -311,6 +435,37 @@ def main(page: ft.Page):
         expand=True,
         scroll=ft.ScrollMode.AUTO
     )
+    
+    # --- Logistics Tab Content (NEW) ---
+    logistics_tab_content = ft.Row(
+        [
+            ft.Column(
+                [
+                    ft.Text("1. Proposed Matches", size=24),
+                    ft.Text("Select matches to create a pickup route. (Run 'Matching' tab first)"),
+                    ft.ElevatedButton("Refresh Match List", on_click=refresh_logistics_matches),
+                    logistics_matches_list,
+                ],
+                expand=1,
+                scroll=ft.ScrollMode.AUTO
+            ),
+            ft.VerticalDivider(),
+            ft.Column(
+                [
+                    ft.Text("2. Create Route", size=24),
+                    ft.ElevatedButton("Create Pickup Route from Selection", on_click=create_pickup_click, icon=ft.Icons.ADD_ROAD),
+                    logistics_status,
+                    ft.Divider(),
+                    ft.Text("3. Pending Pickups", size=24),
+                    ft.ElevatedButton("Refresh Pending List", on_click=refresh_pending_pickups),
+                    logistics_pending_list,
+                ],
+                expand=1,
+                scroll=ft.ScrollMode.AUTO
+            )
+        ],
+        expand=True
+    )
 
     # --- Main Page Setup (Tabs) ---
     page.add(
@@ -331,16 +486,24 @@ def main(page: ft.Page):
                     icon=ft.Icons.HUB,
                     content=match_tab_content,
                 ),
+                # --- NEW TAB ---
+                ft.Tab(
+                    text="Logistics",
+                    icon=ft.Icons.LOCAL_SHIPPING,
+                    content=logistics_tab_content,
+                ),
+                # --- END NEW TAB ---
             ],
             expand=1,
             selected_index=0
         )
     )
     
-        # Load initial data when app starts
+    # Load initial data when app starts (UPDATED)
     def on_page_ready(e):
         refresh_donor_list(None)
         refresh_recipient_list(None)
+        refresh_pending_pickups(None) # <-- Add this line
         page.update()
 
     page.on_ready = on_page_ready

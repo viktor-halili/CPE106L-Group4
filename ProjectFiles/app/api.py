@@ -133,7 +133,7 @@ def create_pickup_route(matches: List[MatchResult]):
 
     for match in matches:
         # Stop 1: Go to the donor
-        donor = db.get_donor_by_id(match.donor_id)
+        donor = db.get_donor_by_id(str(match.donor_id))
         if donor and donor.address not in addresses_seen:
             stops.append(PickupStop(
                 stop_type="pickup",
@@ -143,7 +143,7 @@ def create_pickup_route(matches: List[MatchResult]):
             addresses_seen.add(donor.address)
 
         # Stop 2: Go to the recipient
-        recipient = db.get_recipient_by_id(match.recipient_id)
+        recipient = db.get_recipient_by_id(str(match.recipient_id))
         if recipient and recipient.address not in addresses_seen:
             stops.append(PickupStop(
                 stop_type="dropoff",
