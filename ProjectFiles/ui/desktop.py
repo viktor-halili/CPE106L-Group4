@@ -1,3 +1,8 @@
+import matplotlib
+matplotlib.use("svg") # Use the SVG backend for Flet
+import matplotlib.pyplot as plt
+from flet.matplotlib_chart import MatplotlibChart
+from collections import defaultdict
 import flet as ft
 import requests
 from datetime import datetime, timedelta
@@ -37,6 +42,12 @@ def main(page: ft.Page):
     logistics_matches_list = ft.ListView(expand=1, spacing=10)
     logistics_pending_list = ft.ListView(expand=1, spacing=10)
     logistics_status = ft.Text(value="", color=ft.Colors.BLUE)
+
+    # --- Dashboard Tab Controls ---
+    donor_chart = MatplotlibChart(expand=True)
+    recipient_chart = MatplotlibChart(expand=True)
+    match_chart = MatplotlibChart(expand=True)
+    dashboard_status = ft.Text(value="Click 'Refresh' to load dashboard.", color=ft.Colors.BLUE)
     
     # This will hold the raw JSON data of the matches
     page.client_storage.set("current_matches", []) 
@@ -401,6 +412,116 @@ def main(page: ft.Page):
             logistics_status.color = ft.Colors.RED
         
         page.update()
+        
+    # --- Charting Functions (Copied from charts.py) ---
+
+    def plot_donor_participation(donors, ax):
+        """Creates a bar chart of food items donated by each donor."""
+        if not donors:
+            ax.set_title("Donor Participation")
+            ax.text(0.5, 0.5, "No donor data", ha='center')
+            return
+
+        names = [donor['name'] for donor in donors]
+        # Count the number of *distinct* food items each donor has
+        food_counts = [len(donor['current_donations']) for donor in donors]
+        
+        colors = plt.cm.viridis([0.2, 0.5, 0.8])
+        
+        ax.bar(names, food_counts, color=colors)
+        ax.set_title("Donor Participation")
+        ax.set_ylabel("Number of Active Food Donations")
+        ax.set_xlabel("Donor")
+        # plt.tight_layout() <-- REMOVED
+
+    def plot_recipient_needs(recipients, ax):
+        """Creates a pie chart of the daily needs of all recipients."""
+        if not recipients:
+            ax.set_title("Recipient Needs")
+            ax.text(0.5, 0.5, "No recipient data", ha='center')
+            return
+
+        names = [r['name'] for r in recipients]
+        needs = [r['daily_need'] for r in recipients]
+        
+        ax.pie(needs, labels=names, autopct='%1.1f%%', startangle=90)
+        ax.set_title("Share of Total Daily Need")
+        ax.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+        # plt.tight_layout() <-- REMOVED
+
+    def plot_match_summary(matches, ax):
+        """Creates a bar chart of the total quantity matched to each recipient."""
+        if not matches:
+            ax.set_title("Match Summary")
+            ax.text(0.5, 0.5, "No match data", ha='center')
+            return
+
+        # Aggregate total quantity matched per recipient
+        recipient_totals = defaultdict(float)
+        for match in matches:
+            recipient_totals[match['recipient_name']] += match['quantity_matched']
+
+        names = list(recipient_totals.keys())
+        quantities = list(recipient_totals.values())
+        
+        colors = plt.cm.plasma([0.3, 0.6, 0.9])
+        
+        ax.bar(names, quantities, color=colors)
+        ax.set_title("Total Food Matched (by Recipient)")
+        ax.set_ylabel("Total Quantity Matched (e.g., kg)")
+        ax.set_xlabel("Recipient")
+        # plt.tight_layout() <-- REMOVED
+
+    # --- Event Handler (Dashboard) ---
+    
+    def refresh_dashboard_click(e):
+        dashboard_status.value = "Loading dashboard data..."
+        dashboard_status.color = ft.Colors.BLUE
+        page.update()
+
+        try:
+            # 1. Fetch all data
+            donors_res = requests.get(f"{API_URL}/donors")
+            recipients_res = requests.get(f"{API_URL}/recipients")
+            matches_res = requests.post(f"{API_URL}/matches/run")
+
+            if donors_res.status_code != 200 or recipients_res.status_code != 200 or matches_res.status_code != 200:
+                dashboard_status.value = "Error fetching data from API."
+                dashboard_status.color = ft.Colors.RED
+                page.update()
+                return
+
+            donors = donors_res.json()
+            recipients = recipients_res.json()
+            matches = matches_res.json()
+            
+            # 2. Create Donor Chart
+            fig1, ax1 = plt.subplots(figsize=(6, 4)) # <-- SETTING SIZE
+            plot_donor_participation(donors, ax1)
+            fig1.tight_layout() # <-- APPLYING LAYOUT
+            donor_chart.figure = fig1
+            
+            # 3. Create Recipient Chart
+            fig2, ax2 = plt.subplots(figsize=(6, 4)) # <-- SETTING SIZE
+            plot_recipient_needs(recipients, ax2)
+            fig2.tight_layout() # <-- APPLYING LAYOUT
+            recipient_chart.figure = fig2
+            
+            # 4. Create Match Chart
+            fig3, ax3 = plt.subplots(figsize=(9, 4)) # <-- SETTING SIZE
+            plot_match_summary(matches, ax3)
+            fig3.tight_layout() # <-- APPLYING LAYOUT
+            match_chart.figure = fig3
+            
+            dashboard_status.value = "Dashboard loaded successfully."
+            dashboard_status.color = ft.Colors.GREEN
+
+        except Exception as ex:
+            dashboard_status.value = f"API connection error: {ex}"
+            dashboard_status.color = ft.Colors.RED
+        
+        page.update()
+        
     # --- Page Layout (with Tabs) ---
 
     # --- Donor Tab Content ---
@@ -517,6 +638,30 @@ def main(page: ft.Page):
         expand=True
     )
 
+    # --- Dashboard Tab Content ---
+    dashboard_tab_content = ft.Column(
+        [
+            ft.Text("Food Rescue Analytics", size=24),
+            ft.ElevatedButton("Refresh Dashboard", on_click=refresh_dashboard_click, icon=ft.Icons.REFRESH),
+            dashboard_status,
+            ft.Row(
+                [
+                    donor_chart,
+                    recipient_chart,
+                ],
+                expand=1
+            ),
+            ft.Row(
+                [
+                    match_chart,
+                ],
+                expand=1
+            ),
+        ],
+        expand=True,
+        scroll=ft.ScrollMode.AUTO
+    )
+
     # --- Main Page Setup (Tabs) ---
     page.add(
         ft.Tabs(
@@ -536,13 +681,16 @@ def main(page: ft.Page):
                     icon=ft.Icons.HUB,
                     content=match_tab_content,
                 ),
-                # --- NEW TAB ---
                 ft.Tab(
                     text="Logistics",
                     icon=ft.Icons.LOCAL_SHIPPING,
                     content=logistics_tab_content,
                 ),
-                # --- END NEW TAB ---
+                ft.Tab(
+                    text="Dashboard",
+                    icon=ft.Icons.DASHBOARD,
+                    content=dashboard_tab_content,
+                ),
             ],
             expand=1,
             selected_index=0
@@ -553,7 +701,8 @@ def main(page: ft.Page):
     def on_page_ready(e):
         refresh_donor_list(None)
         refresh_recipient_list(None)
-        refresh_pending_pickups(None) # <-- Add this line
+        refresh_pending_pickups(None)
+        refresh_dashboard_click(None) # <-- Add this line
         page.update()
 
     page.on_ready = on_page_ready
