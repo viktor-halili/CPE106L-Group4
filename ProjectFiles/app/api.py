@@ -1,9 +1,9 @@
 from fastapi import FastAPI, HTTPException
-from typing import List # <-- I've added this
+from typing import List 
 from app.models import (
     Donor, Recipient, FoodItem, 
     PyObjectId, AvailableFood,
-    MatchResult, Pickup, PickupStop  # <-- These are correctly imported
+    MatchResult, Pickup, PickupStop
 )
 import app.data as db
 import app.match as match # Import your new match file
@@ -77,7 +77,7 @@ def get_recipient(recipient_id: str):
     """Gets a specific recipient by their ID."""
     recipient = db.get_recipient_by_id(recipient_id)
     if not recipient:
-        raise HTTPException(status_code=4404, detail="Recipient not found")
+        raise HTTPException(status_code=404, detail="Recipient not found")
     return recipient
 
 # --- Food & Matching Endpoints ---
@@ -108,7 +108,6 @@ def run_matchmaker():
         raise HTTPException(status_code=500, detail="Error running matching algorithm")
 
 # --- Logistics / Pickup Endpoints ---
-# (NEW CODE ADDED BELOW)
 
 @app.get("/pickups", response_model=List[Pickup])
 def get_pending_pickups():
@@ -126,14 +125,12 @@ def create_pickup_route(matches: List[MatchResult]):
         raise HTTPException(status_code=400, detail="No matches provided to create a pickup")
 
     # --- Simple "Route" Generation ---
-    # A real app would use Google Maps API here.
-    # We get addresses from the DB.
     stops: List[PickupStop] = []
     addresses_seen = set() # To help de-duplicate
 
     for match in matches:
         # Stop 1: Go to the donor
-        donor = db.get_donor_by_id(str(match.donor_id))
+        donor = db.get_donor_by_id(str(match.donor_id)) # Use str()
         if donor and donor.address not in addresses_seen:
             stops.append(PickupStop(
                 stop_type="pickup",
@@ -143,7 +140,7 @@ def create_pickup_route(matches: List[MatchResult]):
             addresses_seen.add(donor.address)
 
         # Stop 2: Go to the recipient
-        recipient = db.get_recipient_by_id(str(match.recipient_id))
+        recipient = db.get_recipient_by_id(str(match.recipient_id)) # Use str()
         if recipient and recipient.address not in addresses_seen:
             stops.append(PickupStop(
                 stop_type="dropoff",
@@ -183,18 +180,25 @@ def complete_pickup_route(pickup_id: str):
         raise HTTPException(status_code=400, detail="This pickup is already complete")
 
     # 2. "Close the loop" - Update the inventory
-    # We will implement this logic in the next step.
-    # For now, we just print to the console.
-    
     print(f"--- Completing Pickup {pickup.id} ---")
+    
+    errors = []
     for match in pickup.matches:
-        print(f"  > Log: {match.quantity_matched} {match.unit} of {match.food_name}")
-        print(f"  > From: {match.donor_name} (ID: {match.donor_id})")
-        print(f"  > To: {match.recipient_name} (ID: {match.recipient_id})")
+        print(f"  > Updating: {match.quantity_matched} {match.unit} of {match.food_name} from {match.donor_name}")
         
-        # TODO: Add logic to find the specific food item
-        # in the donor's list and subtract the quantity.
+        # Call our new database function
+        success = db.update_food_item_quantity(match)
         
+        if not success:
+            error_msg = f"  > FAILED to update quantity for {match.food_name} from {match.donor_name}"
+            print(error_msg)
+            errors.append(error_msg)
+
+    if errors:
+        # In a real app, you might handle this differently
+        # (e.g., not mark as complete, or save the errors)
+        print("WARNING: Some items failed to update.")
+
     print("--------------------------------------")
 
     # 3. Update the pickup status

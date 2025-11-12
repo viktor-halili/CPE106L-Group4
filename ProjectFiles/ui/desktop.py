@@ -328,29 +328,79 @@ def main(page: ft.Page):
         try:
             response = requests.get(f"{API_URL}/pickups")
             if response.status_code != 200:
-                logistics_pending_list.append(ft.Text("Error fetching pickups."))
+                logistics_pending_list.controls.append(ft.Text("Error fetching pickups."))
                 page.update()
                 return
             
             pickups = response.json()
             if not pickups:
-                logistics_pending_list.append(ft.Text("No pending pickups."))
+                logistics_pending_list.controls.append(ft.Text("No pending pickups."))
 
             for pickup in pickups:
-                # We'll just show the status and ID for now
+                if pickup['status'] != 'pending':
+                    continue # Skip this item if it's not pending
+                
+                # Create the tile for pickup info
+                pickup_tile = ft.ListTile(
+                    title=ft.Text(f"Pickup ID: {pickup['_id']}"),
+                    subtitle=ft.Text(f"Status: {pickup['status']} | Stops: {len(pickup['stops'])}"),
+                    leading=ft.Icon(ft.Icons.ROUTE),
+                    expand=True # Make the tile take up available space
+                )
+                
+                # Create the complete button
+                complete_button = ft.ElevatedButton(
+                    text="Complete",
+                    icon=ft.Icons.CHECK,
+                    data=pickup['_id'], # Store the pickup ID here
+                    on_click=complete_pickup_click,
+                    # Disable the button if it's already complete
+                    disabled=(pickup['status'] == "complete")
+                )
+                
+                # Add them both in a Row
                 logistics_pending_list.controls.append(
-                    ft.ListTile(
-                        title=ft.Text(f"Pickup ID: {pickup['_id']}"),
-                        subtitle=ft.Text(f"Status: {pickup['status']} | Stops: {len(pickup['stops'])}"),
-                        leading=ft.Icon(ft.Icons.ROUTE)
+                    ft.Row(
+                        controls=[
+                            pickup_tile,
+                            complete_button
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN
                     )
                 )
         except Exception as ex:
-            logistics_pending_list.append(ft.Text(f"API Error: {ex}"))
+            logistics_pending_list.controls.append(ft.Text(f"API Error: {ex}"))
         
         if e: # Only update the page if a user clicked
             page.update()
+            
+    def complete_pickup_click(e):
+        """
+        Called when the user clicks 'Complete' on a pending pickup.
+        """
+        pickup_id = e.control.data  # Get the ID we stored on the button
+        logistics_status.value = f"Completing pickup {pickup_id}..."
+        logistics_status.color = ft.Colors.BLUE
+        page.update()
 
+        try:
+            response = requests.put(f"{API_URL}/pickups/{pickup_id}/complete")
+            
+            if response.status_code == 200:
+                logistics_status.value = f"Pickup {pickup_id} completed!"
+                logistics_status.color = ft.Colors.GREEN
+                
+                # Refresh the list to show the status change
+                refresh_pending_pickups(None)
+            else:
+                logistics_status.value = f"Error: {response.json().get('detail')}"
+                logistics_status.color = ft.Colors.RED
+
+        except Exception as ex:
+            logistics_status.value = f"API connection error: {ex}"
+            logistics_status.color = ft.Colors.RED
+        
+        page.update()
     # --- Page Layout (with Tabs) ---
 
     # --- Donor Tab Content ---

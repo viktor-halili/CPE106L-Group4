@@ -52,8 +52,10 @@ def run_matching_algorithm(
                     donor_name=food.donor_name,
                     food_name=food.name,
                     quantity_matched=quantity_to_match,
-                    unit=food.unit
+                    unit=food.unit,
+                    expiry_date=food.expiry_date
                 )
+                
                 proposed_matches.append(match)
                 
                 # Update the food quantity and the recipient's remaining need
@@ -74,8 +76,10 @@ def run_matching_algorithm(
                     donor_name=food.donor_name,
                     food_name=food.name,
                     quantity_matched=quantity_to_match,
-                    unit=food.unit
+                    unit=food.unit,
+                    expiry_date=food.expiry_date
                 )
+                
                 proposed_matches.append(match)
                 
                 # Update the food quantity and the recipient's remaining need

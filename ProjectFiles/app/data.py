@@ -145,3 +145,73 @@ def update_pickup_status(pickup_id: str, status: str) -> bool:
         {"$set": {"status": status}}
     )
     return result.modified_count > 0
+
+def update_food_item_quantity(match: MatchResult) -> bool:
+    """
+    Finds a specific food item in a donor's list and updates its quantity.
+    This is the "close the loop" function.
+    
+    It first tries to find a food item that matches by name, expiry date,
+    and has enough quantity.
+    """
+    
+    # We must match the item exactly by name and expiry date
+    # This prevents deducting from the wrong "Apples" batch
+    find_query = {
+        "_id": ObjectId(match.donor_id),
+        "current_donations": {
+            "$elemMatch": {
+                "name": match.food_name,
+                "expiry_date": match.expiry_date,
+                "quantity": {"$gte": match.quantity_matched}
+            }
+        }
+    }
+    
+    # The update operation will "pull" (remove) the item if the
+    # matched quantity is used up, or "set" (update) the new quantity.
+    
+    # We use MongoDB's arrayFilters to identify *which* element
+    # in the array we are updating.
+    
+    # First, try to remove the item if it's an exact match
+    update_pull_query = {
+        "$pull": {
+            "current_donations": {
+                "name": match.food_name,
+                "expiry_date": match.expiry_date,
+                "quantity": match.quantity_matched # Only pull if quantity is exact
+            }
+        }
+    }
+    
+    result = donors_collection.update_one(find_query, update_pull_query)
+    
+    if result.modified_count > 0:
+        # We successfully removed the item (exact quantity match)
+        return True
+        
+    # If we didn't remove it, it means the quantity wasn't exact.
+    # So, we perform a $inc (decrement) operation instead.
+    
+    # We re-use the find_query to ensure we still have enough
+    update_inc_query = {
+        "$inc": {
+            "current_donations.$[item].quantity": -match.quantity_matched
+        }
+    }
+    
+    array_filters = [
+        {
+            "item.name": match.food_name,
+            "item.expiry_date": match.expiry_date
+        }
+    ]
+    
+    result = donors_collection.update_one(
+        find_query, 
+        update_inc_query, 
+        array_filters=array_filters
+    )
+
+    return result.modified_count > 0

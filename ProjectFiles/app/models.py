@@ -105,6 +105,7 @@ class MatchResult(BaseModel):
     food_name: str
     quantity_matched: float
     unit: str
+    expiry_date: datetime  # <-- ADD THIS LINE
 
     model_config = {
         "arbitrary_types_allowed": True
