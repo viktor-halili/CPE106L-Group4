@@ -2,7 +2,8 @@ from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 from app.models import (
     Donor, Recipient, FoodItem, 
-    PyObjectId, AvailableFood
+    PyObjectId, AvailableFood,
+    MatchResult, Pickup, PickupStop  # <-- Make sure these are imported
 )
 from typing import List, Optional
 from bson import ObjectId
@@ -20,10 +21,12 @@ if client:
     db = client.food_rescue_db
     donors_collection = db.donors
     recipients_collection = db.recipients
+    pickups_collection = db.pickups # <-- NEW COLLECTION
 else:
     db = None
     donors_collection = None
     recipients_collection = None
+    pickups_collection = None # <-- NEW COLLECTION
 
 # --- Donor Functions ---
 
@@ -108,3 +111,37 @@ def get_all_available_food() -> List[AvailableFood]:
     for food_data in donors_collection.aggregate(pipeline):
         available_food_list.append(AvailableFood(**food_data))
     return available_food_list
+
+# --- Pickup/Logistics Functions (NEW) ---
+
+def create_pickup(pickup: Pickup) -> str:
+    """Adds a new pickup route to the DB and returns its new ID."""
+    pickup_dict = pickup.model_dump(by_alias=True, exclude=["id"])
+    result = pickups_collection.insert_one(pickup_dict)
+    return str(result.inserted_id)
+
+def get_all_pickups() -> List[Pickup]:
+    """Fetches all pickup routes from the DB."""
+    pickups = []
+    for data in pickups_collection.find():
+        pickups.append(Pickup(**data))
+    return pickups
+
+def get_pickup_by_id(pickup_id: str) -> Optional[Pickup]:
+    """Fetches a single pickup from the DB by its string ID."""
+    try:
+        data = pickups_collection.find_one({"_id": ObjectId(pickup_id)})
+        if data:
+            return Pickup(**data)
+    except Exception as e:
+        print(f"Error finding pickup: {e}")
+        return None
+    return None
+
+def update_pickup_status(pickup_id: str, status: str) -> bool:
+    """Updates the status of a pickup route (e.loc., "complete")."""
+    result = pickups_collection.update_one(
+        {"_id": ObjectId(pickup_id)},
+        {"$set": {"status": status}}
+    )
+    return result.modified_count > 0
